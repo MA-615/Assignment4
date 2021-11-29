@@ -1,15 +1,18 @@
-#Assignment 4 Part Two:
-#As shown in Chapter 2 of Text Mining with R do a sentiment display through the 
-#narrative of your book. You should choose an index length and a sentiment 
-#dictionary that gives you the best fit between the plotline of the book and 
-#the graph that you create. If you don’t know the plotline of the book, 
-#you will need to either skim or refer to a synopsis.
+#Text Analysis
+
+#######################################
+#Part One
+
+#Peter Pan By 
+#Download Peter Pan from Gutenberg Project
+peter_pan <- gutenberg_download(16)
 
 pacman::p_load(gutenbergr, dplyr, stringr, tidyverse, 
                tidytext, tidyr, scales, ggplot2)
 
-#Download Peter Pan from Gutenberg Project
-peter_pan <- gutenberg_download(16)
+#######################################
+#Part Two
+
 #Tidy Peter Pan
 tidy_pp <- peter_pan %>%
   mutate(
@@ -112,3 +115,6 @@ pp_pos_tibble <- tidy_pp %>%
   ungroup()
 pp_pos_tibble
 
+
+####################################
+#Part Three
