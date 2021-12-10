@@ -1,0 +1,245 @@
+---
+title: "Text Analysis of Peter Pan"
+author: "Lauren Temple"
+date: "12/6/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(gutenbergr, dplyr, stringr, tidyverse, 
+               tidytext, tidyr, scales, ggplot2, wordcloud,
+               tnum)
+```
+
+#Part One
+```{r}
+#Peter Pan By 
+#Download Peter Pan from Gutenberg Project
+peter_pan <- gutenberg_download(16)
+```
+
+
+# Part Two
+
+## Tidy Peter Pan
+
+```{r}
+tidy_pp <- peter_pan %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+# Begin from first chapter
+tidy_pp <- filter(tidy_pp, chapter >=1)
+```
+
+# Sentiment Analysis with tidy data
+
+```{r}
+nrc_negative <- get_sentiments("bing") %>% 
+  filter(sentiment == "negative")
+nrc_positive <- get_sentiments("bing") %>%
+  filter(sentiment == "positive")
+
+negative <- tidy_pp %>%
+  inner_join(nrc_negative) %>%
+  count(word, sort = TRUE)
+positive <- tidy_pp %>%
+  inner_join(nrc_positive) %>%
+  count(word, sort = TRUE)
+
+pp_sent <- tidy_pp %>% 
+  inner_join(get_sentiments("bing")) %>% 
+               count(index = linenumber %/% 100, sentiment) %>%
+               pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
+               mutate(sentiment = positive - negative)
+```
+
+### Graph of the bing sentiment analysis
+
+```{r}
+ggplot(pp_sent, aes(index, sentiment)) +
+  geom_col(show.legend = FALSE) 
+```
+
+### Comparing the three different sentiment dictionaries
+
+```{r}
+afinn <- tidy_pp %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 100) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  tidy_pp %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  tidy_pp %>% 
+    inner_join(get_sentiments("nrc") %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 100, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+bind_rows(afinn, 
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+- All three lexicons show similar trends through the book
+
+### Ratio of negative words in each chapter
+
+```{r}
+bingnegative <- get_sentiments("bing") %>% 
+  filter(sentiment == "negative")
+
+wordcounts <- tidy_pp %>%
+  group_by(chapter) %>%
+  summarize(words = n())
+
+pp_neg_tibble <- tidy_pp %>%
+  semi_join(bingnegative) %>%
+  group_by(chapter) %>%
+  summarize(negativewords = n()) %>%
+  left_join(wordcounts, by = "chapter") %>%
+  mutate(ratio = negativewords/words) %>%
+  ungroup()
+pp_neg_tibble
+```
+
+### Ratio of positive words in each chapter
+
+```{r}
+bingpositive <- get_sentiments("bing") %>% 
+  filter(sentiment == "positive")
+
+wordcounts1 <- tidy_pp %>%
+  group_by(chapter) %>%
+  summarize(words = n())
+
+pp_pos_tibble <- tidy_pp %>%
+  semi_join(bingpositive) %>%
+  group_by(chapter) %>%
+  summarize(positivewords = n()) %>%
+  left_join(wordcounts1, by = "chapter") %>%
+  mutate(ratio = positivewords/words) %>%
+  ungroup()
+pp_pos_tibble
+
+
+tidy_pp %>%
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+
+# Part Three
+
+- true numbers gives you the location of each sentence
+- think of true numbers like a tree diagram
+- book -> chapters -> paragraphs -> sentences
+- subject = book/chapter, properties= paragraph, value= sentence
+
+## Ingest Peter Pan into TrueNumbers
+
+```{r}
+tnum.authorize("mssp1.bu.edu")
+tnum.setSpace("test2")
+tnum_pp <- gutenberg_download(gutenberg_id = 16)
+source("Book2TN-v6A-1.R")
+
+#injest book into true number test space 2
+#tnBooksFromLines(tnum_pp, "tnum_pp/assignment4") #no chapters
+
+#ensure that the book was injested
+tnum.getDBPathList(taxonomy = "subject", levels = 2)
+```
+
+## Begin Queries
+
+```{r}
+whole <- tnum.query("tnum_pp/assignment4/# has text", max= 2835)
+whole_df <- tnum.objectsToDf(whole)
+# the book repeats itself after a few chapters starting at line 564
+# get to the end of the book at line 2826, for some reason we are missing a few of the last lines
+whole_df <- slice(whole_df, 564:2826)
+```
+
+### Split tnum data base into chapters
+- The book did not properly get ingested with chapter numbers 
+- I attempted to ingest the book as a text file with <> around headings but that failed to ingest into the test space
+
+```{r}
+ch1 <- slice(whole_df, 1:128)
+ch2 <- slice(whole_df, 130:260)
+ch3 <- slice(whole_df, 261:468)
+ch4 <- slice(whole_df, 470:601)
+ch5 <- slice(whole_df, 603:767)
+ch6 <- slice(whole_df, 769:911)
+ch7 <- slice(whole_df, 913:996)
+ch8 <- slice(whole_df, 998:1223)
+ch9 <- slice(whole_df, 1224:1263)
+ch10 <- slice(whole_df, 1265:1355)
+ch11 <- slice(whole_df, 1357:1469)
+ch12 <- slice(whole_df, 1471:1537)
+ch13 <- slice(whole_df, 1539:1678)
+ch14 <- slice(whole_df, 1680:1800)
+ch15 <- slice(whole_df, 1802:1957)
+ch16 <- slice(whole_df, 1958:2091)
+ch17 <- slice(whole_df, 2093:2263)
+```
+
+```{r}
+q111 <- tnum.query(query = "austen# has ordinal", max=500)   ## everything
+df111 <- tnum.objectsToDf(q111)
+
+## show ordered objects in document
+q112 <- tnum.query("austen# has ordinal")   ## show ordered objects in document
+df112 <- tnum.objectsToDf(q112)
+
+## focus on one paragraph -- note the word count for each sentence
+q3 <- tnum.query("austen/persuasion/chapter-1/paragraph-7# has count#")  # just 1 para
+df3 <- tnum.objectsToDf(q3)
+df3
+
+
+## and now look at the text in a sentence
+q1 <- tnum.query("austen/persuasion/chapter-1/paragraph-7/sentence-3# has text")
+df1 <- tnum.objectsToDf(q1)
+df1
+
+## To extract a paragraph of text
+q4 <- tnum.query("austen/persuasion/chapter-1/paragraph-7/sentence# has text", max = 15)
+df4 <- tnum.objectsToDf(q4)
+para_text4 <- df4 %>% pull(string.value) %>% 
+  str_replace_all("\"","") %>% 
+  str_flatten(collapse = " ")
+
+
+
+
+## steps to understand
+# a <- para_text4[4]
+# a
+# 
+# b <- str_replace_all(a,"\"","")
+# b
+# 
+# c <- para_text4
+# c
+# 
+# c <- str_replace_all(c,"\"","")
+```
+
