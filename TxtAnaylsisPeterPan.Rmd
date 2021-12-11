@@ -9,7 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load(gutenbergr, dplyr, stringr, tidyverse, 
                tidytext, tidyr, scales, ggplot2, wordcloud,
-               tnum)
+               tnum, magrittr)
 ```
 
 #Part One
@@ -39,30 +39,32 @@ tidy_pp <- filter(tidy_pp, chapter >=1)
 
 # Sentiment Analysis with tidy data
 
+## Bing Sentiment
 ```{r}
-nrc_negative <- get_sentiments("bing") %>% 
+bing_negative <- get_sentiments("bing") %>% 
   filter(sentiment == "negative")
-nrc_positive <- get_sentiments("bing") %>%
+bing_positive <- get_sentiments("bing") %>%
   filter(sentiment == "positive")
 
 negative <- tidy_pp %>%
-  inner_join(nrc_negative) %>%
+  inner_join(bing_negative) %>%
   count(word, sort = TRUE)
 positive <- tidy_pp %>%
-  inner_join(nrc_positive) %>%
+  inner_join(bing_positive) %>%
   count(word, sort = TRUE)
 
-pp_sent <- tidy_pp %>% 
+pp_sent_bing <- tidy_pp %>% 
   inner_join(get_sentiments("bing")) %>% 
                count(index = linenumber %/% 100, sentiment) %>%
                pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
                mutate(sentiment = positive - negative)
+tibble(pp_sent_bing)
 ```
 
 ### Graph of the bing sentiment analysis
 
 ```{r}
-ggplot(pp_sent, aes(index, sentiment)) +
+ggplot(pp_sent_nrc, aes(index, sentiment)) +
   geom_col(show.legend = FALSE) 
 ```
 
@@ -97,7 +99,56 @@ bind_rows(afinn,
   geom_col(show.legend = FALSE) +
   facet_wrap(~method, ncol = 1, scales = "free_y")
 ```
+
+```{r}
+nrc_negative <- get_sentiments("nrc") %>% 
+  filter(sentiment == "negative")
+nrc_positive <- get_sentiments("nrc") %>%
+  filter(sentiment == "positive")
+
+negative <- tidy_pp %>%
+  inner_join(nrc_negative) %>%
+  count(word, sort = TRUE)
+positive <- tidy_pp %>%
+  inner_join(nrc_positive) %>%
+  count(word, sort = TRUE)
+
+pp_sent_nrc <- tidy_pp %>% 
+  inner_join(get_sentiments("nrc")) %>% 
+               count(index = linenumber %/% 100, sentiment) %>%
+               pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
+               mutate(sentiment = positive - negative)
+```
+### Table of all three lexicon sentiment percentages by index
+```{r, include= FALSE}
+tidy_nrc <- pp_sent_nrc [c(1, 12)]
+tidy_nrc <- rename(tidy_nrc, 'nrc sentiment' = 'sentiment')
+tidy_bing <- pp_sent_bing [c(1,4)]
+tidy_bing <- rename(tidy_bing, 'bing sentiment' = 'sentiment')
+tidy_afinn <- afinn [c(1,2)]
+tidy_afinn <- rename(tidy_afinn, 'afinn sentiment' = 'sentiment')
+
+table_all_sentiment <- left_join(tidy_nrc, tidy_bing, by= "index")
+table_all_sentiment <- left_join(table_all_sentiment, tidy_afinn, by= "index")
+```
+
+```{r}
+table_all_sentiment
+```
+
+```{r}
+range(table_all_sentiment$`nrc sentiment`)
+range(table_all_sentiment$`bing sentiment`)
+range(table_all_sentiment$`afinn sentiment`)
+```
+```{r}
+sd(table_all_sentiment$`nrc sentiment`)
+sd(table_all_sentiment$`bing sentiment`)
+sd(table_all_sentiment$`afinn sentiment`)
+```
+
 - All three lexicons show similar trends through the book
+- The afinn sentiment shows the largest range of sentiment as well as the greatest standard deviation
 
 ### Ratio of negative words in each chapter
 
@@ -164,7 +215,7 @@ source("Book2TN-v6A-1.R")
 #tnBooksFromLines(tnum_pp, "tnum_pp/assignment4") #no chapters
 
 #ensure that the book was injested
-tnum.getDBPathList(taxonomy = "subject", levels = 2)
+#tnum.getDBPathList(taxonomy = "subject", levels = 2)
 ```
 
 ## Begin Queries
@@ -182,64 +233,142 @@ whole_df <- slice(whole_df, 564:2826)
 - I attempted to ingest the book as a text file with <> around headings but that failed to ingest into the test space
 
 ```{r}
-ch1 <- slice(whole_df, 1:128)
-ch2 <- slice(whole_df, 130:260)
-ch3 <- slice(whole_df, 261:468)
-ch4 <- slice(whole_df, 470:601)
-ch5 <- slice(whole_df, 603:767)
-ch6 <- slice(whole_df, 769:911)
-ch7 <- slice(whole_df, 913:996)
-ch8 <- slice(whole_df, 998:1223)
-ch9 <- slice(whole_df, 1224:1263)
-ch10 <- slice(whole_df, 1265:1355)
-ch11 <- slice(whole_df, 1357:1469)
-ch12 <- slice(whole_df, 1471:1537)
-ch13 <- slice(whole_df, 1539:1678)
-ch14 <- slice(whole_df, 1680:1800)
-ch15 <- slice(whole_df, 1802:1957)
-ch16 <- slice(whole_df, 1958:2091)
-ch17 <- slice(whole_df, 2093:2263)
-```
-
-```{r}
-q111 <- tnum.query(query = "austen# has ordinal", max=500)   ## everything
+q111 <- tnum.query(query = "tnum_pp# has ordinal", max=500)   ## everything
 df111 <- tnum.objectsToDf(q111)
 
 ## show ordered objects in document
-q112 <- tnum.query("austen# has ordinal")   ## show ordered objects in document
+q112 <- tnum.query("tnum_pp# has ordinal")   ## show ordered objects in document
 df112 <- tnum.objectsToDf(q112)
 
 ## focus on one paragraph -- note the word count for each sentence
-q3 <- tnum.query("austen/persuasion/chapter-1/paragraph-7# has count#")  # just 1 para
+q3 <- tnum.query("tnum_pp/assignment4/section:0000/paragraph:0024# has count#")  # just 1 para
 df3 <- tnum.objectsToDf(q3)
 df3
 
 
 ## and now look at the text in a sentence
-q1 <- tnum.query("austen/persuasion/chapter-1/paragraph-7/sentence-3# has text")
+q1 <- tnum.query("tnum_pp/assignment4/section:0000/paragraph:0024/sentence:0003# has text")
 df1 <- tnum.objectsToDf(q1)
 df1
 
 ## To extract a paragraph of text
-q4 <- tnum.query("austen/persuasion/chapter-1/paragraph-7/sentence# has text", max = 15)
-df4 <- tnum.objectsToDf(q4)
-para_text4 <- df4 %>% pull(string.value) %>% 
+q24 <- tnum.query("tnum_pp/assignment4/section:0000/paragraph:0024/sentence# has text", max = 15)
+df24 <- tnum.objectsToDf(q24)
+para_text24 <- df24 %>% pull(string.value) %>% 
   str_replace_all("\"","") %>% 
   str_flatten(collapse = " ")
-
-
-
-
-## steps to understand
-# a <- para_text4[4]
-# a
-# 
-# b <- str_replace_all(a,"\"","")
-# b
-# 
-# c <- para_text4
-# c
-# 
-# c <- str_replace_all(c,"\"","")
 ```
 
+## Analysis -- sentences and paragraphs
+
+```{r}
+
+pq1 <- tnum.query("tnum_pp/assignment4/section:* has ordinal", max = 2835)
+pqdf1 <- tnum.objectsToDf(pq1)
+
+## Convert pqdf1 into a dataframe to reformat it for para-level analysis
+## start with ordinals -- the gaps in the orginal numbering show where the headings go
+
+bk_df <- pqdf1 %>% separate(col=subject, sep="/para", into = c("section", "para")) 
+
+bk_df %<>% separate(col=section, sep=":", into= c("out","section"))
+
+bk_df %<>% separate(col=para, sep="/", into=c("pars", "sent"))
+
+bk_df %<>% separate(col=pars, sep=":", into=c("out1", "para"))
+
+bk_df %<>% separate(col=sent, sep=":", into=c("out2", "sent"))
+
+bk_df %<>% rename(ordinal=numeric.value)
+
+bk_df %<>% select(section, para, sent, ordinal)
+
+## Now the word counts
+
+pq2 <- tnum.query("tnum_pp/assignment4/section:* has count:#", max = 2835)
+pqdf2 <- tnum.objectsToDf(pq2)
+
+bk_w_df <- pqdf2 %>% separate(col=subject, sep="e:", into=c("out", "sent1"))
+
+bk_w_df %<>% rename(word_count = numeric.value)
+
+bk_w_df %<>% select(sent1, word_count)
+
+bk_df <- cbind2(bk_df, bk_w_df)
+
+## now add the text
+
+pq3 <- tnum.query("tnum_pp/assignment4/section:* has text", max = 2835)
+pqdf3 <- tnum.objectsToDf(pq3)
+
+bk_t_df <- pqdf3 %>% separate(col=subject, sep="e:", into=c("out", "sent1"))
+
+bk_t_df %<>% rename(s_text = string.value)
+
+bk_t_df %<>% select(s_text)
+  
+bk_df <- cbind2(bk_df, bk_t_df)
+
+
+pq4 <- tnum.query("tnum_pp/assignment4/section:* has text", max = 2835)
+pqdf4 <- tnum.objectsToDf(pq4)
+
+bk_tag_df <- pqdf4 %>% select(tags)
+
+
+## form paragraphs
+```
+
+## Sentimentr with  tnum
+
+```{r}
+peter_1 <- get_sentences(para_text24)
+
+## to get sentiment scores by sentence
+sentiment(peter_1)
+
+## to get sentiment scores aggregated by paragraph
+sentiment_by(peter_1)
+```
+
+```{r}
+#tnum.query("tnum_pp/assignment4/section:0022/paragraph:0002/sentence:# has *")
+
+q31 <- tnum.query("tnum_pp/assignment4/section:0000# has ordinal", max=500)
+qdf31 <- tnum.objectsToDf(q31)
+
+
+q30 <- tnum.query("tnum_pp/assignment4/section:0000/paragraph:0024# has * = REGEXP(\" Wendy\")")
+
+qdf30 <- tnum.objectsToDf(q30)
+
+tnum.tagByQuery("tnum_pp/assignment4/section:0000# has * = REGEXP(\" Wendy\")", adds=("reference:Wendy"))
+
+
+# now the query for the tag gives you the same references
+
+q31 <- tnum.query("@reference:Wendy")
+qdf31 <- tnum.objectsToDf(q31)
+
+graph4 <- tnum.makeTnumPhraseGraph(query2)
+
+tnum.plotGraph(graph4)
+```
+
+
+
+
+```{r}
+query3 <- tnum.query("tnum_pp/# has * = REGEXP(\"fly\")", max = 200)
+
+tnum.tagByQuery("tnum_pp/# has * = REGEXP(\"fly\")", adds=("ref:fly"))
+query4 <- tnum.query("@ref:fly")
+
+df2 <- tnum.objectsToDf(query4)
+
+
+graph2 <- tnum.makeTnumPhraseGraph(query4, "string.value")
+
+
+tnum.plotGraph(graph2)
+```
